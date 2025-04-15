@@ -2,278 +2,301 @@ const express = require("express");
 const router = express.Router();
 const fs = require("node:fs");
 const { db } = require("../firebase");
+const { ToWords } = require("to-words");
 
 /* GET home page. */
 router.get("/", function (req, res, next) {
   res.render("index", { title: "Express" });
 });
 
-router.get("/invoice", function (req, res, next) {
-  const PDFDocument = require("pdfkit");
-  const outputPath = "public/file.pdf";
-  const doc = new PDFDocument();
-
-  const stream = fs.createWriteStream(outputPath);
-  doc.pipe(stream);
-
-  // Header
-  const companyName = "SOPHECO PRIVATE LIMITED";
-  doc
-    .fontSize(18)
-    .fillColor("#4A148C")
-    .text("SOLUTION FOR POWERFUL HEARING AND COMMUNICATION", {
-      align: "center",
-    })
-    .moveDown();
-
-  doc
-    .fontSize(12)
-    .fillColor("black")
-    .text(
-      "SHOP N- 332, BASEMENT ZAKIR NAGAR, NEW FRIENDS COLONY NEXT TO JAMIA BANK, ZAKIR NAGAR DHALAAN, DELHI, 110025",
-      { align: "center" }
-    )
-    .moveDown();
-
-  doc.text(`Invoice No. SO/MU/24`, { align: "right" });
-  doc.text(`March 13, 2025`, { align: "right" }).moveDown();
-
-  // Billing Information
-  doc
-    .fontSize(12)
-    .text("BILLED TO:", { underline: true })
-    .text("Mr. Tarun Kochhar")
-    .text("+91-9811313306")
-    .moveDown();
-
-  // Table Header
-  doc
-    .fontSize(10)
-    .fillColor("white")
-    .rect(50, doc.y, 500, 20)
-    .fill("#4A148C")
-    .text("ITEM DESCRIPTION", 55, doc.y + 5, { width: 200 })
-    .text("QTY", 270, doc.y + 5)
-    .text("TOTAL", 400, doc.y + 5)
-    .fillColor("black");
-
-  doc.moveDown();
-
-  // Table Rows
-  doc
-    .text("KIT INSIO C & GO 1IX", 55, doc.y)
-    .text("2 YEAR WARRANTY", 55, doc.y + 15)
-    .text("1", 275, doc.y)
-    .text("₹1,13,990.00", 400, doc.y)
-    .moveDown(2);
-
-  doc
-    .text("CHARGER", 55, doc.y)
-    .text("*1 YEAR WARRANTY", 55, doc.y + 15)
-    .moveDown(2);
-
-  // Discount
-  doc
-    .fontSize(10)
-    .text("Rebate & Discount. IGST Exempted", 55, doc.y)
-    .text("(-)₹48,990.00", 400, doc.y)
-    .moveDown(2);
-
-  // Total Amount
-  doc
-    .rect(50, doc.y, 500, 20)
-    .fill("#4A148C")
-    .fillColor("white")
-    .text("Total Amount", 55, doc.y + 5)
-    .text("₹65,000.00", 400, doc.y + 5)
-    .fillColor("black");
-
-  doc.moveDown(2);
-
-  doc
-    .text("Amount chargeable (in words):", { underline: true })
-    .text("INR Sixty five thousand only")
-    .moveDown();
-
-  // Footer
-  doc
-    .text(companyName, { underline: true })
-    .text(`Company's PAN: ABMCS2566D`)
-    .moveDown();
-
-  doc.text("Declaration:", { underline: true });
-  doc.text("1) 2 years Manufacturing Warranty.");
-  doc.text("2) 100% payment against delivery.");
-  doc.text("3) Delivery within 3 working days after making payment.");
-  doc.text("Term and conditions apply.", { bold: true }).moveDown();
-
-  // Signature
-  doc.text("DEEPIKA ARYA (Audiologist)");
-  doc.text("Contact No.: +91-9006164420");
-
-  // Finalize PDF
-  doc.end();
-  console.log(`Invoice generated: ${outputPath}`);
-});
-
-router.get("/db", async (req, res, next) => {
-  const colRef = await db.collection("invoice").add({
-    name: "123",
-    age: 12,
-  });
-  res.send(200);
-});
-
-router.get("/table", function (req, res, next) {
+router.post("/download-invoice", async (req, res, next) => {
+  const createDate = getDate();
+  const invoiceDate = getDate(req.body.invoiceDate);
+  const invoiceData = { ...req.body, createDate, invoiceDate };
+  //const colRef = await db.collection("invoice").add(invoiceData);
+  // pdf creation
   const fs = require("fs");
   const PDFDocument = require("pdfkit-table");
-  
-  // start pdf document
-  let doc = new PDFDocument({ margin: 30, size: 'A4' });
-  // to save on server
-  doc.pipe(fs.createWriteStream("./document.pdf"));
-
-  // -----------------------------------------------------------------------------------------------------
-  // Simple Table with Array
-  // -----------------------------------------------------------------------------------------------------
-  const tableArray = {
-    headers: ["Country", "Conversion rate", "Trend"],
-    rows: [
-      ["Switzerland", "12%", "+1.12%"],
-      ["France", "67%", "-0.98%"],
-      ["England", "33%", "+4.44%"],
-    ],
-  };
-  doc.table( tableArray, { width: 300, }); // A4 595.28 x 841.89 (portrait) (about width sizes)
-  
-  // move to down
-  doc.moveDown(); // separate tables
-  
-  // -----------------------------------------------------------------------------------------------------
-  // Complex Table with Object
-  // -----------------------------------------------------------------------------------------------------
-  // A4 595.28 x 841.89 (portrait) (about width sizes)
-  const table = {
-    headers: [
-      { label:"Name", property: 'name', width: 60, renderer: null },
-      { label:"Description", property: 'description', width: 150, renderer: null }, 
-      { label:"Price 1", property: 'price1', width: 100, renderer: null }, 
-      { label:"Price 2", property: 'price2', width: 100, renderer: null }, 
-      { label:"Price 3", property: 'price3', width: 80, renderer: null }, 
-      { label:"Price 4", property: 'price4', width: 63, renderer: (value, indexColumn, indexRow, row) => { return `U$ ${Number(value).toFixed(2)}` } },
-    ],
-    datas: [
-    { description: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean mattis ante in laoreet egestas. ', price1: '$1', price3: '$ 3', price2: '$2', price4: '4', name: 'Name 1', },
-    { name: 'bold:Name 2', description: 'bold:Lorem ipsum dolor.', price1: 'bold:$1', price3: '$3', price2: '$2', price4: '4', options: { fontSize: 10, separation: true } },
-    { name: 'Name 3', description: 'Lorem ipsum dolor.', price1: 'bold:$1', price4: '4.111111', price2: '$2', price3: { label:'PRICE $3', options: { fontSize: 12 } }, },
-  ],
-    rows: [
-      [
-        "Apple",
-        "Nullam ut facilisis mi. Nunc dignissim ex ac vulputate facilisis.",
-        "$ 105,99",
-        "$ 105,99",
-        "$ 105,99",
-        "105.99",
-      ],
-      [
-        "Tire",
-        "Donec ac tincidunt nisi, sit amet tincidunt mauris. Fusce venenatis tristique quam, nec rhoncus eros volutpat nec. Donec fringilla ut lorem vitae maximus. Morbi ex erat, luctus eu nulla sit amet, facilisis porttitor mi.",
-        "$ 105,99",
-        "$ 105,99",
-        "$ 105,99",
-        "105.99",
-      ],
-    ],
-  };
-  
-  doc.table(table, {
-    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8),
-    prepareRow: (row, indexColumn, indexRow, rectRow) => {
-    doc.font("Helvetica").fontSize(8);
-    indexColumn === 0 && doc.addBackground(rectRow, (indexRow % 2 ? 'blue' : 'green'), 0.15);
-  },
-  });
-  
-  doc.moveDown(1);
-  
-  const tableArrayColor = {
-  headers: ["Country", "Conversion rate", "Trend"],
-  rows: [
-    ["Switzerland", "12%", "+1.12%"],
-    ["France", "67%", "-0.98%"],
-    ["Brazil", "88%", "2.77%"],
-  ],
-  };
-  doc.table( tableArrayColor, { 
-  
-  width: 400,
-  x: 150,
-  columnsSize: [200,100,100],
-  
-  prepareRow: (row, indexColumn, indexRow, rectRow) => {
-    doc.font("Helvetica").fontSize(10);
-    indexColumn === 0 && doc.addBackground(rectRow, (indexRow % 2 ? 'red' : 'green'), 0.5);
-  },
-  
-  }); // A4 595.28 x 841.89 (portrait) (about width sizes)
-  
-  
-  // if your run express.js server:
-  // HTTP response only to show pdf
-  // doc.pipe(res);
-  
-  // done
-
-  doc.moveDown(1);
-  doc.text("hello")
-  doc.end();
-});
-
-router.get("/header", (req, res, next) => {
-  const fs = require("fs");
-  const PDFDocument = require("pdfkit");
   const doc = new PDFDocument({ size: "A4", margin: 0 });
+  doc.registerFont("DejaVuSans", "public/DejaVuSans.ttf");
 
   // Output file
-  const stream = fs.createWriteStream("output.pdf");
+  const stream = fs.createWriteStream("public/output.pdf");
   doc.pipe(stream);
 
   // Dark Purple Left Section
   doc.rect(0, 0, 249, 30).fill("#2E0052");
 
   // White Slant Divider
-  doc
-    .moveTo(250, 0)
-    .lineTo(210, 30)
-    .lineTo(250, 30)
-    .fillAndStroke("white")
+  doc.moveTo(250, 0).lineTo(210, 30).lineTo(250, 30).fillAndStroke("white");
 
-  doc
-    .moveTo(260, 0)
-    .lineTo(240, 15)
-    .lineTo(270, 15)
-    .fill("#3A5ADB");
+  doc.moveTo(260, 0).lineTo(240, 15).lineTo(270, 15).fill("#3A5ADB");
 
   // Blue Section
   doc.rect(260, 0, 866, 15).fill("#3A5ADB");
+  doc.font("Helvetica-Bold").text(`GST NO - ${invoiceData.gst}`, 20, 40);
 
   doc.moveDown();
-  doc.image('public/logo.png', 450, 30, {width: 100, height:74}).moveDown();
+  doc.image("public/logo.png", 470, 30, { width: 100, height: 74 }).moveDown();
 
   doc
-  .font('Helvetica-Bold')
-  .fillColor("#4A148C")
-  .text('SOLUTION FOR POWERFUL HEARING AND COMMUNICATION', 192, 110, {}).moveDown();
+    .font("Helvetica-Bold")
+    .fillColor("#4A148C")
+    .text("SOLUTION FOR POWERFUL HEARING AND COMMUNICATION", 220, 110, {})
+    .moveDown();
 
-  doc.font('Helvetica').fillColor("black").text('Billed To :', 50);
-  doc.font('Helvetica-Bold').text('Pratik Kumar Rai');
-  doc.font('Helvetica').fontSize(10).text('addresss');
+  doc.font("Helvetica").fillColor("black").text("Billed To :", 20);
+  doc.font("Helvetica-Bold").text(invoiceData.customerName);
+  doc.font("Helvetica").fontSize(10).text(invoiceData.addressline1);
+  if (invoiceData.addressline2) {
+    doc.font("Helvetica").fontSize(10).text(invoiceData.addressline2);
+  }
+  doc
+    .font("Helvetica")
+    .fontSize(10)
+    .text(`${invoiceData.city}, ${invoiceData.state} - ${invoiceData.pin}`);
+  if (invoiceData.phone) {
+    doc.font("Helvetica").fontSize(10).text(`+91-${invoiceData.phone}`);
+  }
+  doc
+    .font("Helvetica")
+    .fontSize(10)
+    .text(getAddress(invoiceData.sophecoAddress), 280, 130, {
+      width: 300,
+      align: "right",
+    });
 
-  doc.font('Helvetica').fontSize(10).text('Addrsess', 430, 130);
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(11)
+    .text(invoiceData.invoiceNumber, 500, 200);
+  doc.font("Helvetica-Bold").fontSize(11).text(createDate, 516, 212);
 
+  doc.font("Helvetica").fontSize(12).text("", 20, 250);
+
+  const table = {
+    headers: getHeaders(),
+    datas: getRowData(invoiceData),
+  };
+
+  doc.table(table, {
+    prepareHeader: () =>
+      doc.font("Helvetica-Bold").fontSize(12).fillColor("white"),
+    prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
+      doc.font("Helvetica").fontSize(12).fillColor("black");
+    },
+    width: 800,
+    padding: 15,
+    divider: {
+      header: { disabled: true },
+      horizontal: { disabled: true, width: 0.1, opacity: 1 },
+      vertical: { width: 1, opacity: 1 },
+    },
+  });
+  doc
+    .font("Helvetica")
+    .fontSize(10)
+    .text("Amount chargeable (in words)", 30, 600);
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(10)
+    .text(`INR ${toWords(+invoiceData.totalAmount)}`, { width: 400 });
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(15)
+    .text("SOPHECO PRIVATE LIMITED.", 30, 660);
+  doc.font("Helvetica").fontSize(15).text("Company's PAN: ABMCS2566D");
+  doc
+    .font("Helvetica")
+    .fontSize(10)
+    .text(
+      `We declare that this invoice shows the actual price of the goods\ndescribed and that all particulars are true and correct\n1) 100% payment against delivery\n2) delivery within 3 working days after making payment\n`,
+      30,
+      700
+    );
+  doc.font("Helvetica-Bold").fontSize(8).text(`*Terms and conditions apply`);
+  doc.image("public/sign.png", 380, 590, { width: 200, height: 184 });
+  doc.fontSize(10).text("Contact No:- (+91-9006164420)", 410, 780);
+  // total border
+  doc.moveTo(570, 560).lineTo(30, 560).strokeOpacity(0.5).strokeColor("black");
+  doc.moveTo(570, 590).lineTo(30, 590).strokeOpacity(0.5).strokeColor("black");
+  // total border
+
+  //row border
+  doc.moveTo(430, 560).lineTo(430, 280).strokeOpacity(0.5).strokeColor("black");
+  doc.moveTo(350, 560).lineTo(350, 280).strokeOpacity(0.5).strokeColor("black");
+  doc.moveTo(300, 560).lineTo(300, 280).strokeOpacity(0.5).strokeColor("black");
+  doc.moveTo(220, 560).lineTo(220, 280).strokeOpacity(0.5).strokeColor("black");
+  doc.stroke();
+  //row border
+  console.log(`${invoiceData.customerName.replaceAll(' ','_')}_${invoiceData.invoiceNumber.replaceAll('/','_')}.pdf`)
+  res.attachment(`${invoiceData.customerName.replaceAll(' ','_')}${invoiceData.invoiceNumber.replaceAll('/','_')}.pdf`);
+  doc.pipe(res);
   doc.end();
-  console.log("PDF Created Successfully!");
 });
+
+const getDate = (date) => {
+  const dt = date ? new Date(date) : new Date(Date.now());
+  return `${("0" + dt.getDate()).slice(-2)}/${("0" + (dt.getMonth() + 1)).slice(
+    -2
+  )}/${dt.getFullYear()}`;
+};
+
+const getAddress = (state) => {
+  let retVal = "";
+  if (state.toLowerCase() === "mumbai") {
+    retVal = `SHOP NO. 115, CITY MALL, NEW LINK RD., PHASE\nD, SHASTRI NAGAR, ANDHERI WEST, MUMBAI,\nMAHARASHTRA 400102`;
+  } else if (state.toLowerCase() === "bihar") {
+    retVal = `KALI ASTHAN CHOWK, INFRONT OF PANI TANKI\nZOOM STUDIO ROAD, FIRST FLOOR,\nBEGUSARAI, BIHAR 851101`;
+  } else {
+    retVal = `SHOP NO. 332, BASMENT ZAKIR NAGAR, NEW FRIENDS\nD COLONY, NEXT TO JAMIA BANK\nZAKIR NAGAR DELHI 110025`;
+  }
+  return retVal;
+};
+
+const getHeaderDefFirst = () => {
+  return {
+    renderer: null,
+    headerColor: "#2E0052",
+    headerOpacity: 1,
+    valign: "center",
+    columnColor: "red",
+    columnOpacity: 0.5,
+    options: { separation: true },
+  };
+};
+
+const getHeaderDefRest = () => {
+  return {
+    renderer: null,
+    headerColor: "#3A5ADB",
+    headerOpacity: 1,
+    valign: "center",
+    columnColor: "#cccccc",
+    columnOpacity: 0.5,
+    options: { separation: true },
+  };
+};
+
+const getHeaders = () => {
+  return [
+    {
+      label: "ITEM DESCRIPTION",
+      property: "desc",
+      width: 200,
+      ...getHeaderDefFirst(),
+    },
+    {
+      label: "HNS/SAC",
+      property: "hns",
+      width: 80,
+      ...getHeaderDefRest(),
+    },
+    { label: "QTY", property: "qty", width: 50, ...getHeaderDefRest() },
+    { label: "GST", property: "gst", width: 80, ...getHeaderDefRest() },
+    { label: "TOTAL", property: "total", width: 150, ...getHeaderDefRest() },
+  ];
+};
+
+const getRowData = (data) => {
+  return [
+    {
+      desc: {
+        label: data.productName,
+        options: {
+          fontSize: 12,
+          fontFamily: "Helvetica-Bold",
+          separation: true,
+        },
+      },
+      hns: data.hns,
+      qty: data.quantity,
+      gst: "",
+      total: {
+        label: `₹${(+data.sellingPrice + 0.0).toLocaleString("en-IN")}.00`,
+        options: { fontFamily: "DejaVuSans" },
+      },
+    },
+    {
+      desc: {
+        label: getSerialNo(
+          data.isKit,
+          data.serialNumber,
+          data.serialNumberLeft,
+          data.serialNumberRight
+        ),
+        options: { fontFamily: "Helvetica-Oblique" },
+      },
+      qty: "",
+      gst: "",
+      total: "",
+    },
+    {
+      desc: { label: "CHARGER", options: { fontFamily: "Helvetica-Bold" } },
+      qty: "",
+      gst: "",
+      total: "",
+    },
+    {
+      desc: {
+        label: "*1 year warranty",
+        options: { fontFamily: "Helvetica-Oblique" },
+      },
+      qty: "",
+      gst: "",
+      total: "",
+    },
+    {
+      desc: "",
+      qty: "",
+      gst: "",
+      total: "",
+    },
+    {
+      desc: {
+        label: "Rebate & Discount. IGST\nExempted",
+        options: { fontFamily: "Helvetica-Bold" },
+      },
+      qty: "",
+      gst: "cgst 0%\nsgst 0%",
+      total: {
+        label: getDiscountedPrice(data.sellingPrice, data.totalAmount),
+        options: { fontFamily: "DejaVuSans" },
+      },
+    },
+    {
+      desc: "",
+      qty: "",
+      gst: "",
+      total: "",
+    },
+    {
+      desc: "",
+      qty: "",
+      gst: "",
+      total: {
+        label: `\n\n\n₹${(+data.totalAmount + 0.0).toLocaleString("en-IN")}.00`,
+        options: { fontFamily: "DejaVuSans" },
+      },
+    },
+  ];
+};
+
+const getSerialNo = (isKit, sl, sll, slr) => {
+  if (isKit) {
+    return `SL NO.\n${sll}\n${slr}\n*2 years warranty`;
+  }
+  return `SL NO.\n${sl}\n*2 years warranty`;
+};
+
+const getDiscountedPrice = (selling, total) => {
+  const discountPrice = "" + (selling - total);
+  return `(-)₹${(+discountPrice + 0.0).toLocaleString("en-IN")}.00`;
+};
+
+const toWords = (amount) => {
+  const toWords = new ToWords();
+  return toWords.convert(amount, { currency: true });
+};
 
 module.exports = router;
