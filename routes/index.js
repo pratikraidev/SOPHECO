@@ -170,7 +170,11 @@ router.post("/download-invoice", async (req, res, next) => {
     doc.pipe(res);
     doc.end();
   } catch (error) {
-    throw new Error('SERVER BROKEN CONTACT ADMIN') 
+    res.status(500).json({
+      message: "Error while creating invoice",
+      error: error.message,
+    });
+    throw new Error('SERVER BROKEN CONTACT ADMIN');
   }
 });
 
