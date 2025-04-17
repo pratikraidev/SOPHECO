@@ -1,7 +1,7 @@
 // Import the functions you need from the SDKs you need
 const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
-import dotenv from "dotenv";
+const dotenv = require("dotenv");
 
 dotenv.config();
 

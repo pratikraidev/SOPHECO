@@ -7,7 +7,7 @@
 var app = require('../app');
 var debug = require('debug')('invoice-gen:server');
 var http = require('http');
-import dotenv from "dotenv";
+var dotenv = require("dotenv");
 dotenv.config();
 
 /**
