@@ -16,7 +16,6 @@ router.post("/download-invoice", async (req, res, next) => {
   try {
     const colRef = await db.collection("invoice").add(invoiceData);
     // pdf creation
-    const fs = require("fs");
     const PDFDocument = require("pdfkit-table");
     const doc = new PDFDocument({ size: "A4", margin: 0 });
     doc.registerFont("DejaVuSans", "public/DejaVuSans.ttf");
