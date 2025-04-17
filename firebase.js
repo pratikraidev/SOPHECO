@@ -2,15 +2,6 @@
 const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 
-// Initialize Firebase
-initializeApp({
-  credential: cert(serviceAccount),
-});
-
-const db = getFirestore();
-
-module.exports = { db };
-
 const serviceAccount = {
   type: process.env.TYPE,
   project_id: process.env.PROJECT_ID,
@@ -24,3 +15,12 @@ const serviceAccount = {
   client_x509_cert_url: process.env.CLIENT_CERT_URL,
   universe_domain: process.env.UNIVERSE_DOMAIN,
 };
+
+// Initialize Firebase
+initializeApp({
+  credential: cert(serviceAccount),
+});
+
+const db = getFirestore();
+
+module.exports = { db };
