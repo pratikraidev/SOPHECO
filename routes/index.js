@@ -425,7 +425,8 @@ const getRowData = (data) => {
           data.isKit,
           data.serialNumber,
           data.serialNumberLeft,
-          data.serialNumberRight
+          data.serialNumberRight,
+          data.warranty
         ),
         options: { fontFamily: "Helvetica-Oblique" },
       },
@@ -484,11 +485,11 @@ const getRowData = (data) => {
   ];
 };
 
-const getSerialNo = (isKit, sl, sll, slr) => {
+const getSerialNo = (isKit, sl, sll, slr, warranty) => {
   if (isKit) {
-    return `SL NO.\n${sll}\n${slr}\n*${data.warranty} years warranty`;
+    return `SL NO.\n${sll}\n${slr}\n*${warranty} years warranty`;
   }
-  return `SL NO.\n${sl}\n*${data.warranty} years warranty`;
+  return `SL NO.\n${sl}\n*${warranty} years warranty`;
 };
 
 const getDiscountedPrice = (selling, total) => {
