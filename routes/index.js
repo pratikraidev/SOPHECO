@@ -145,7 +145,9 @@ router.post("/download-invoice", async (req, res, next) => {
       ...req.body,
       createDate,
       invoiceDate,
-      id: 1,
+      id: Math.floor(
+        1000 + Math.random() * 9000
+      ),
     };
     try {
       //const colRef = await db.collection("invoice").add(invoiceData);
