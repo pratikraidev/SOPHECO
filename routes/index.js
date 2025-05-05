@@ -7,31 +7,18 @@ const { auth } = require("../firebase-client");
 const { signInWithEmailAndPassword } = require("firebase/auth");
 const { createConnection } = require("../astra-conn");
 const dotenv = require("dotenv");
+const fetch = require("node-fetch");
 dotenv.config();
-
+const url = `${process.env.ASTRA_INVOICE_ENDPOINT_VECTOR}v_invoices`;
+const headers = {
+  Token: process.env.ASTRA_DB_APPLICATION_TOKEN_VECTOR,
+  "Content-Type": "application/json",
+};
+const method = "POST";
 /* GET home page. */
 router.get("/", function (req, res, next) {
   res.render("index", { title: "Express is live" });
 });
-
-router.get("/create-table", async (req, res, next) => {
-  createConnection()
-    .connect()
-    .then(async () => {
-      createConnection()
-        .execute(
-          `
-      CREATE TABLE IF NOT EXISTS ${process.env.ASTRA_DB_KEYSPACE}.customer_invoices (id BIGINT PRIMARY KEY, addressline1 TEXT, addressline2 TEXT, city TEXT, createDate TEXT, customerName TEXT, discount TEXT, gst TEXT, hns BIGINT, invoiceDate TEXT,
-      invoiceNumber TEXT, isKit BOOLEAN , phone TEXT, pin TEXT, productName TEXT, purchasedPrice TEXT, quantity BIGINT, sellingPrice BIGINT, serialNumber TEXT,
-      serialNumberLeft TEXT, serialNumberRight TEXT, sophecoAddress TEXT, state TEXT, totalAmount BIGINT, warranty BIGINT);
-    `
-        )
-        .then(() => res.send("SUCCESS"))
-        .catch((error) => res.status(500).send({ error }));
-    })
-    .catch((error) => res.send({ error }));
-});
-
 /**
  * user signin with email/password
  */
@@ -93,22 +80,34 @@ router.get("/log-out", (req, res, next) => {
  */
 router.post("/get-invoices", async (req, res, next) => {
   if (auth.currentUser) {
-    const pageSize = parseInt(req.body.pageSize) || 10;
+    const limit = parseInt(req.body.pageSize) || 10;
     const pageState = req.body.pageState || null;
     const searchStr = req.body.searchStr || null;
-    const options = {
-      prepare: true,
-      fetchSize: pageSize,
-      pageState: pageState,
+    const body = {
+      find: {
+        filter: searchStr
+          ? {
+              searchTerm: {
+                $in: [searchStr],
+              },
+            }
+          : {},
+        options: {
+          limit,
+          pageState,
+        },
+      },
     };
-    const query = searchStr ? `SELECT * from sopheco_invoice.customer_invoices WHERE productname=? ALLOW FILTERING` : `SELECT * from sopheco_invoice.customer_invoices`;
-    createConnection()
-      .execute(query, searchStr ? [searchStr]: [], options)
-      .then((result) => {
+    fetch(url, {
+      body: JSON.stringify(body),
+      headers,
+      method,
+    })
+      .then(async (result) => {
+        const jsonData = await result.json();
         res.json({
-          data: result.rows,
-          pageState: result.pageState,
-          hasMorePages: !result.done,
+          data: jsonData.data.documents,
+          pageState: jsonData.data.nextPageState,
         });
       })
       .catch((error) => {
@@ -130,22 +129,24 @@ router.post("/download-invoice", async (req, res, next) => {
       ...req.body,
       createDate,
       invoiceDate,
-      id: Math.floor(1000 + Math.random() * 9000)
+      id: crypto.randomUUID(),
     };
     try {
-      if (invoiceData.isDownload.toLowerCase() == 'download') {
+      if (invoiceData.isDownload.toLowerCase() == "download") {
         createPDf(invoiceData, res);
       } else {
-        const query = `INSERT INTO ${process.env.ASTRA_DB_KEYSPACE}.${process.env.ASTRA_DB_TABLE} (id, addressline1, addressline2, city, createDate, customerName, discount, gst, hns, invoiceDate,
-        invoiceNumber, isKit , phone, pin, productName, purchasedPrice, quantity, sellingPrice, serialNumber , serialNumberLeft, serialNumberRight, sophecoAddress, state, totalAmount, warranty) VALUES (${invoiceData.id}, 
-        '${invoiceData.addressline1}', '${invoiceData.addressline2}', '${invoiceData.city}', '${invoiceData.createDate}', '${invoiceData.customerName}',
-        '${invoiceData.discount}', '${invoiceData.gst}', ${invoiceData.hns}, '${invoiceData.invoiceDate}', '${invoiceData.invoiceNumber}', ${invoiceData.isKit}, '${invoiceData.phone}', 
-        '${invoiceData.pin}', '${invoiceData.productName}', '${invoiceData.purchasedPrice}', ${invoiceData.quantity}, ${invoiceData.sellingPrice}, '${invoiceData.serialNumber}', 
-        '${invoiceData.serialNumberLeft}', '${invoiceData.serialNumberRight}', '${invoiceData.sophecoAddress}', '${invoiceData.state}', ${invoiceData.totalAmount}, ${invoiceData.warranty})`;
-        createConnection()
-          .execute(query)
-          .then(() => {
-            createPDf(invoiceData, res);
+        const body = {
+          insertOne: {
+            document: invoiceData,
+          },
+        };
+        fetch(url, {
+          method,
+          headers,
+          body: JSON.stringify(body),
+        })
+          .then(async (data) => {
+            await createPDf(invoiceData, res);
           })
           .catch((error) => res.status(500).send(error));
       }
@@ -162,130 +163,159 @@ router.post("/download-invoice", async (req, res, next) => {
 
 const createPDf = (invoiceData, res) => {
   try {
-  // pdf creation
-  const PDFDocument = require("pdfkit-table");
-  const doc = new PDFDocument({ size: "A4", margin: 0 });
-  doc.registerFont("DejaVuSans", "public/DejaVuSans.ttf");
+    // pdf creation
+    const PDFDocument = require("pdfkit-table");
+    const doc = new PDFDocument({ size: "A4", margin: 0 });
+    doc.registerFont("DejaVuSans", "public/DejaVuSans.ttf");
 
-  // Output file
-  const stream = fs.createWriteStream("public/output.pdf");
-  doc.pipe(stream);
+    // Output file
+    const stream = fs.createWriteStream("public/output.pdf");
+    doc.pipe(stream);
 
-  // Dark Purple Left Section
-  doc.rect(0, 0, 249, 30).fill("#2E0052");
+    // Dark Purple Left Section
+    doc.rect(0, 0, 249, 30).fill("#2E0052");
 
-  // White Slant Divider
-  doc.moveTo(250, 0).lineTo(210, 30).lineTo(250, 30).fillAndStroke("white");
+    // White Slant Divider
+    doc.moveTo(250, 0).lineTo(210, 30).lineTo(250, 30).fillAndStroke("white");
 
-  doc.moveTo(260, 0).lineTo(240, 15).lineTo(270, 15).fill("#3A5ADB");
+    doc.moveTo(260, 0).lineTo(240, 15).lineTo(270, 15).fill("#3A5ADB");
 
-  // Blue Section
-  doc.rect(260, 0, 866, 15).fill("#3A5ADB");
-  doc.font("Helvetica-Bold").text(`GST NO - ${invoiceData.gst}`, 20, 40);
+    // Blue Section
+    doc.rect(260, 0, 866, 15).fill("#3A5ADB");
+    doc.font("Helvetica-Bold").text(`GST NO - ${invoiceData.gst}`, 20, 40);
 
-  doc.moveDown();
-  doc.image("public/logo.png", 470, 30, { width: 100, height: 74 }).moveDown();
+    doc.moveDown();
+    doc
+      .image("public/logo.png", 470, 30, { width: 100, height: 74 })
+      .moveDown();
 
-  doc
-    .font("Helvetica-Bold")
-    .fillColor("#4A148C")
-    .text("SOLUTION FOR POWERFUL HEARING AND COMMUNICATION", 220, 110, {})
-    .moveDown();
+    doc
+      .font("Helvetica-Bold")
+      .fillColor("#4A148C")
+      .text("SOLUTION FOR POWERFUL HEARING AND COMMUNICATION", 220, 110, {})
+      .moveDown();
 
-  doc.font("Helvetica").fillColor("black").text("Billed To :", 20);
-  doc.font("Helvetica-Bold").text(invoiceData.customerName);
-  doc.font("Helvetica").fontSize(10).text(invoiceData.addressline1);
-  if (invoiceData.addressline2) {
-    doc.font("Helvetica").fontSize(10).text(invoiceData.addressline2);
-  }
-  doc
-    .font("Helvetica")
-    .fontSize(10)
-    .text(`${invoiceData.city}, ${invoiceData.state} - ${invoiceData.pin}`);
-  if (invoiceData.phone) {
-    doc.font("Helvetica").fontSize(10).text(`+91-${invoiceData.phone}`);
-  }
-  doc
-    .font("Helvetica")
-    .fontSize(10)
-    .text(getAddress(invoiceData.sophecoAddress), 280, 130, {
-      width: 300,
-      align: "right",
+    doc.font("Helvetica").fillColor("black").text("Billed To :", 20);
+    doc.font("Helvetica-Bold").text(invoiceData.customerName);
+    doc.font("Helvetica").fontSize(10).text(invoiceData.addressline1);
+    if (invoiceData.addressline2) {
+      doc.font("Helvetica").fontSize(10).text(invoiceData.addressline2);
+    }
+    doc
+      .font("Helvetica")
+      .fontSize(10)
+      .text(`${invoiceData.city}, ${invoiceData.state} - ${invoiceData.pin}`);
+    if (invoiceData.phone) {
+      doc.font("Helvetica").fontSize(10).text(`+91-${invoiceData.phone}`);
+    }
+    doc
+      .font("Helvetica")
+      .fontSize(10)
+      .text(getAddress(invoiceData.sophecoAddress), 280, 130, {
+        width: 300,
+        align: "right",
+      });
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(11)
+      .text(invoiceData.invoiceNumber, 500, 200);
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(11)
+      .text(invoiceData.invoiceDate, 516, 212);
+
+    doc.font("Helvetica").fontSize(12).text("", 20, 250);
+
+    const table = {
+      headers: getHeaders(),
+      datas: getRowData(invoiceData),
+    };
+
+    doc.table(table, {
+      prepareHeader: () =>
+        doc.font("Helvetica-Bold").fontSize(12).fillColor("white"),
+      prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
+        doc.font("Helvetica").fontSize(12).fillColor("black");
+      },
+      width: 800,
+      padding: 15,
+      divider: {
+        header: { disabled: true },
+        horizontal: { disabled: true, width: 0.1, opacity: 1 },
+        vertical: { width: 1, opacity: 1 },
+      },
     });
+    doc
+      .font("Helvetica")
+      .fontSize(10)
+      .text("Amount chargeable (in words)", 30, 600);
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(10)
+      .text(`INR ${toWords(+invoiceData.totalAmount)}`, { width: 400 });
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(15)
+      .text("SOPHECO PRIVATE LIMITED.", 30, 660);
+    doc.font("Helvetica").fontSize(15).text("Company's PAN: ABMCS2566D");
+    doc
+      .font("Helvetica")
+      .fontSize(10)
+      .text(
+        `We declare that this invoice shows the actual price of the goods\ndescribed and that all particulars are true and correct\n1) 100% payment against delivery\n2) delivery within 3 working days after making payment\n`,
+        30,
+        700
+      );
+    doc.font("Helvetica-Bold").fontSize(8).text(`*Terms and conditions apply`);
+    doc.image("public/sign.png", 380, 590, { width: 200, height: 184 });
+    doc.fontSize(10).text("Contact No:- (+91-9006164420)", 410, 780);
+    // total border
+    doc
+      .moveTo(570, 560)
+      .lineTo(30, 560)
+      .strokeOpacity(0.5)
+      .strokeColor("black");
+    doc
+      .moveTo(570, 590)
+      .lineTo(30, 590)
+      .strokeOpacity(0.5)
+      .strokeColor("black");
+    // total border
 
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(11)
-    .text(invoiceData.invoiceNumber, 500, 200);
-  doc.font("Helvetica-Bold").fontSize(11).text(invoiceData.invoiceDate, 516, 212);
-
-  doc.font("Helvetica").fontSize(12).text("", 20, 250);
-
-  const table = {
-    headers: getHeaders(),
-    datas: getRowData(invoiceData),
-  };
-
-  doc.table(table, {
-    prepareHeader: () =>
-      doc.font("Helvetica-Bold").fontSize(12).fillColor("white"),
-    prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
-      doc.font("Helvetica").fontSize(12).fillColor("black");
-    },
-    width: 800,
-    padding: 15,
-    divider: {
-      header: { disabled: true },
-      horizontal: { disabled: true, width: 0.1, opacity: 1 },
-      vertical: { width: 1, opacity: 1 },
-    },
-  });
-  doc
-    .font("Helvetica")
-    .fontSize(10)
-    .text("Amount chargeable (in words)", 30, 600);
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(10)
-    .text(`INR ${toWords(+invoiceData.totalAmount)}`, { width: 400 });
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(15)
-    .text("SOPHECO PRIVATE LIMITED.", 30, 660);
-  doc.font("Helvetica").fontSize(15).text("Company's PAN: ABMCS2566D");
-  doc
-    .font("Helvetica")
-    .fontSize(10)
-    .text(
-      `We declare that this invoice shows the actual price of the goods\ndescribed and that all particulars are true and correct\n1) 100% payment against delivery\n2) delivery within 3 working days after making payment\n`,
-      30,
-      700
+    //row border
+    doc
+      .moveTo(430, 560)
+      .lineTo(430, 280)
+      .strokeOpacity(0.5)
+      .strokeColor("black");
+    doc
+      .moveTo(350, 560)
+      .lineTo(350, 280)
+      .strokeOpacity(0.5)
+      .strokeColor("black");
+    doc
+      .moveTo(300, 560)
+      .lineTo(300, 280)
+      .strokeOpacity(0.5)
+      .strokeColor("black");
+    doc
+      .moveTo(220, 560)
+      .lineTo(220, 280)
+      .strokeOpacity(0.5)
+      .strokeColor("black");
+    doc.stroke();
+    //row border
+    res.attachment(
+      `${invoiceData.customerName.replaceAll(
+        " ",
+        "_"
+      )}${invoiceData.invoiceNumber.replaceAll("/", "_")}.pdf`
     );
-  doc.font("Helvetica-Bold").fontSize(8).text(`*Terms and conditions apply`);
-  doc.image("public/sign.png", 380, 590, { width: 200, height: 184 });
-  doc.fontSize(10).text("Contact No:- (+91-9006164420)", 410, 780);
-  // total border
-  doc.moveTo(570, 560).lineTo(30, 560).strokeOpacity(0.5).strokeColor("black");
-  doc.moveTo(570, 590).lineTo(30, 590).strokeOpacity(0.5).strokeColor("black");
-  // total border
-
-  //row border
-  doc.moveTo(430, 560).lineTo(430, 280).strokeOpacity(0.5).strokeColor("black");
-  doc.moveTo(350, 560).lineTo(350, 280).strokeOpacity(0.5).strokeColor("black");
-  doc.moveTo(300, 560).lineTo(300, 280).strokeOpacity(0.5).strokeColor("black");
-  doc.moveTo(220, 560).lineTo(220, 280).strokeOpacity(0.5).strokeColor("black");
-  doc.stroke();
-  //row border
-  res.attachment(
-    `${invoiceData.customerName.replaceAll(
-      " ",
-      "_"
-    )}${invoiceData.invoiceNumber.replaceAll("/", "_")}.pdf`
-  );
-  doc.pipe(res);
-  doc.end();
-  } catch(error) {
-    res.status(500).send({error});
+    doc.pipe(res);
+    doc.end();
+  } catch (error) {
+    res.status(500).send({ error });
   }
 };
 
@@ -302,6 +332,8 @@ const getAddress = (state) => {
     retVal = `SHOP NO. 115, CITY MALL, NEW LINK RD., PHASE\nD, SHASTRI NAGAR, ANDHERI WEST, MUMBAI,\nMAHARASHTRA 400102`;
   } else if (state.toLowerCase() === "bihar") {
     retVal = `KALI ASTHAN CHOWK, INFRONT OF PANI TANKI\nZOOM STUDIO ROAD, FIRST FLOOR,\nBEGUSARAI, BIHAR 851101`;
+  } else if (state.toLowerCase() === "pune") {
+    retVal = `Ayurgram Ayurvedic Panchakarma Hospital,\nPipeline Road, Behind Ekta Dental Clinic,\nGanesh Nagar, Shinde wasti\nRavet - 412101`;
   } else {
     retVal = `SHOP NO. 332, BASMENT ZAKIR NAGAR, NEW FRIENDS\nD COLONY, NEXT TO JAMIA BANK\nZAKIR NAGAR DELHI 110025`;
   }
